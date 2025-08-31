@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>แดชบอร์ดดาวน์โหลดไฟล์เสียง (แบบยืนยันตัวตน)</title>
+  <script src="https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.3.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.3.1/firebase-storage.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background-color: #f0f8ff; }
+    button { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    button:hover { background-color: #218838; }
+    audio { margin-top: 20px; width: 100%; }
+    a.download-link { display: block; margin-top: 15px; font-size: 16px; color: #007bff; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h2>🎧 ดาวน์โหลดไฟล์เสียงจาก Firebase (ต้อง login ก่อน)</h2>
+  <button onclick="loginAndDownload()">เข้าสู่ระบบและดาวน์โหลด</button>
+  <audio id="audioPlayer" controls style="display:none;"></audio>
+  <a id="downloadLink" class="download-link" style="display:none;" target="_blank">📥 คลิกเพื่อดาวน์โหลดไฟล์เสียง</a>
+
+  <script>
+    // 🔧 Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyA4OrZERUoxWPiShCEWVvz1MK9cYGO3_K8",
+      authDomain: "new-record-3ccd6.firebaseapp.com",
+      databaseURL: "https://new-record-3ccd6-default-rtdb.firebaseio.com",
+      projectId: "new-record-3ccd6",
+      storageBucket: "new-record-3ccd6.appspot.com",
+      messagingSenderId: "1065863160189",
+      appId: "1:1065863160189:web:853d594b8d17adff126c14",
+      measurementId: "G-ZY9B2K18X3"
+    };
+
+    // 🚀 Initialize Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const storage = firebase.storage();
+
+    function loginAndDownload() {
+      auth.signInAnonymously()
+        .then(() => {
+          console.log("✅ เข้าสู่ระบบแบบ anonymous แล้ว");
+          const audioRef = storage.ref("audio/training-call.mp3"); // เปลี่ยนชื่อไฟล์ตามจริง
+
+          audioRef.getDownloadURL()
+            .then((url) => {
+              const audioPlayer = document.getElementById("audioPlayer");
+              audioPlayer.src = url;
+              audioPlayer.style.display = "block";
+
+              const downloadLink = document.getElementById("downloadLink");
+              downloadLink.href = url;
+              downloadLink.download = "training-call.mp3";
+              downloadLink.style.display = "block";
+            })
+            .catch((error) => {
+              console.error("❌ โหลดไฟล์เสียงไม่สำเร็จ:", error);
+              alert("ไม่สามารถโหลดไฟล์เสียงได้ กรุณาตรวจสอบชื่อไฟล์หรือสิทธิ์การเข้าถึง");
+            });
+        })
+        .catch((error) => {
+          console.error("❌ เข้าสู่ระบบไม่สำเร็จ:", error);
+          alert("ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบการตั้งค่า Firebase Authentication");
+        });
+    }
+  </script>
+</body>
+</html>
