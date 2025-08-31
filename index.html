@@ -2,26 +2,45 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>แดชบอร์ดดาวน์โหลดไฟล์เสียง (แบบยืนยันตัวตน)</title>
+  <title>แดชบอร์ดไฟล์เสียงสำหรับผู้ใช้</title>
   <script src="https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.3.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.3.1/firebase-storage.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 2rem; background-color: #f0f8ff; }
-    button { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
-    button:hover { background-color: #218838; }
-    audio { margin-top: 20px; width: 100%; }
-    a.download-link { display: block; margin-top: 15px; font-size: 16px; color: #007bff; text-decoration: none; }
+    body { font-family: 'Segoe UI', sans-serif; padding: 2rem; background-color: #f4f6f9; }
+    h2 { color: #333; }
+    input, button { padding: 8px; margin: 5px; font-size: 16px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #ccc; text-align: left; }
+    th { background-color: #007bff; color: white; }
+    tr:hover { background-color: #e9f5ff; }
+    #searchInput { width: 300px; }
   </style>
 </head>
 <body>
-  <h2>🎧 ดาวน์โหลดไฟล์เสียงจาก Firebase (ต้อง login ก่อน)</h2>
-  <button onclick="loginAndDownload()">เข้าสู่ระบบและดาวน์โหลด</button>
-  <audio id="audioPlayer" controls style="display:none;"></audio>
-  <a id="downloadLink" class="download-link" style="display:none;" target="_blank">📥 คลิกเพื่อดาวน์โหลดไฟล์เสียง</a>
+  <h2>🔐 เข้าสู่ระบบเพื่อดูไฟล์เสียง</h2>
+  <input type="email" id="email" placeholder="อีเมล">
+  <input type="password" id="password" placeholder="รหัสผ่าน">
+  <button onclick="login()">เข้าสู่ระบบ</button>
+
+  <div id="dashboard" style="display:none;">
+    <h2>📁 ไฟล์เสียงทั้งหมด</h2>
+    <input type="text" id="searchInput" placeholder="🔍 ค้นหาไฟล์เสียง..." oninput="filterTable()">
+    <table id="audioTable">
+      <thead>
+        <tr>
+          <th>ชื่อไฟล์</th>
+          <th>วันที่อัปโหลด</th>
+          <th>เล่น</th>
+          <th>ดาวน์โหลด</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <audio id="audioPlayer" controls style="width:100%; margin-top:20px;"></audio>
+  </div>
 
   <script>
-    // 🔧 Firebase Configuration
     const firebaseConfig = {
       apiKey: "AIzaSyA4OrZERUoxWPiShCEWVvz1MK9cYGO3_K8",
       authDomain: "new-record-3ccd6.firebaseapp.com",
@@ -33,37 +52,81 @@
       measurementId: "G-ZY9B2K18X3"
     };
 
-    // 🚀 Initialize Firebase
-    const app = firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const storage = firebase.storage();
 
-    function loginAndDownload() {
-      auth.signInAnonymously()
+    function login() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      auth.signInWithEmailAndPassword(email, password)
         .then(() => {
-          console.log("✅ เข้าสู่ระบบแบบ anonymous แล้ว");
-          const audioRef = storage.ref("audio/training-call.mp3"); // เปลี่ยนชื่อไฟล์ตามจริง
-
-          audioRef.getDownloadURL()
-            .then((url) => {
-              const audioPlayer = document.getElementById("audioPlayer");
-              audioPlayer.src = url;
-              audioPlayer.style.display = "block";
-
-              const downloadLink = document.getElementById("downloadLink");
-              downloadLink.href = url;
-              downloadLink.download = "training-call.mp3";
-              downloadLink.style.display = "block";
-            })
-            .catch((error) => {
-              console.error("❌ โหลดไฟล์เสียงไม่สำเร็จ:", error);
-              alert("ไม่สามารถโหลดไฟล์เสียงได้ กรุณาตรวจสอบชื่อไฟล์หรือสิทธิ์การเข้าถึง");
-            });
+          document.getElementById("dashboard").style.display = "block";
+          loadAudioFiles();
         })
         .catch((error) => {
-          console.error("❌ เข้าสู่ระบบไม่สำเร็จ:", error);
-          alert("ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบการตั้งค่า Firebase Authentication");
+          alert("เข้าสู่ระบบไม่สำเร็จ: " + error.message);
         });
+    }
+
+    function loadAudioFiles() {
+      const listRef = storage.ref("audio/");
+      listRef.listAll()
+        .then((res) => {
+          const tableBody = document.querySelector("#audioTable tbody");
+          tableBody.innerHTML = "";
+
+          res.items.forEach((itemRef) => {
+            itemRef.getMetadata().then((meta) => {
+              itemRef.getDownloadURL().then((url) => {
+                const row = document.createElement("tr");
+
+                const nameCell = document.createElement("td");
+                nameCell.textContent = itemRef.name;
+
+                const dateCell = document.createElement("td");
+                const date = new Date(meta.timeCreated).toLocaleDateString("th-TH");
+                dateCell.textContent = date;
+
+                const playCell = document.createElement("td");
+                const playBtn = document.createElement("button");
+                playBtn.textContent = "▶️";
+                playBtn.onclick = () => {
+                  const player = document.getElementById("audioPlayer");
+                  player.src = url;
+                  player.play();
+                };
+                playCell.appendChild(playBtn);
+
+                const downloadCell = document.createElement("td");
+                const downloadLink = document.createElement("a");
+                downloadLink.href = url;
+                downloadLink.download = itemRef.name;
+                downloadLink.textContent = "📥";
+                downloadCell.appendChild(downloadLink);
+
+                row.appendChild(nameCell);
+                row.appendChild(dateCell);
+                row.appendChild(playCell);
+                row.appendChild(downloadCell);
+                tableBody.appendChild(row);
+              });
+            });
+          });
+        })
+        .catch((error) => {
+          console.error("โหลดไฟล์ไม่สำเร็จ:", error);
+        });
+    }
+
+    function filterTable() {
+      const input = document.getElementById("searchInput").value.toLowerCase();
+      const rows = document.querySelectorAll("#audioTable tbody tr");
+      rows.forEach(row => {
+        const fileName = row.cells[0].textContent.toLowerCase();
+        row.style.display = fileName.includes(input) ? "" : "none";
+      });
     }
   </script>
 </body>
