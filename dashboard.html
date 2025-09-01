@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แดชบอร์ดไฟล์เสียง</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        body { font-family: 'Tahoma', sans-serif; background: #f0f2f5; padding: 20px; color: #333; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 800px; width: 100%; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #004085; margin-bottom: 10px; }
+        .user-info { text-align: center; font-size: 1.1em; color: #555; margin-bottom: 20px; }
+        .dashboard-section { margin-top: 30px; }
+        .file-item { background: #f8f9fa; border: 1px solid #e2e6ea; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
+        .file-item p { font-weight: bold; color: #0056b3; margin: 0; }
+        .file-item audio { width: 100%; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>แดชบอร์ดไฟล์เสียงที่อัปโหลด</h1>
+        <div class="user-info">
+            <b>ผู้ใช้ปัจจุบัน:</b> <span id="userNameDisplay">กำลังโหลด...</span>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <b>เลือกผู้ใช้งาน:</b>
+            <select id="userDropdown">
+                <option value="">-- เลือกอีเมล --</option>
+            </select>
+        </div>
+
+        <div id="fileListContainer" class="dashboard-section">
+            <p>กำลังโหลดรายการไฟล์...</p>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+        import { getStorage, ref, listAll, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA4OrZERUoxWPiShCEWVvz1MK9cYGO3_K8",
+            authDomain: "new-record-3ccd6.firebaseapp.com",
+            projectId: "new-record-3ccd6",
+            storageBucket: "new-record-3ccd6.firebasestorage.app",
+            messagingSenderId: "1065863160189",
+            appId: "1:1065863160189:web:25313e55b0733f5e126c14",
+            measurementId: "G-JW6N2HYR58"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+
+        async function loadAudioFiles(userId) {
+            const fileListContainer = document.getElementById("fileListContainer");
+            fileListContainer.innerHTML = "<h4>กำลังโหลดรายการไฟล์...</h4>";
+
+            try {
+                const userFolderRef = ref(storage, `audios/${userId}`);
+                const fileList = await listAll(userFolderRef);
+
+                fileListContainer.innerHTML = "";
+                if (fileList.items.length === 0) {
+                    fileListContainer.innerHTML = "<p>ไม่พบไฟล์เสียงที่อัปโหลด</p>";
+                    return;
+                }
+
+                fileList.items.forEach(async (fileRef) => {
+                    const fileName = fileRef.name;
+                    const fileUrl = await getDownloadURL(fileRef);
+
+                    const fileDiv = document.createElement("div");
+                    fileDiv.className = "file-item";
+                    fileDiv.innerHTML = `
+                        <p><b>${fileName}</b></p>
+                        <audio controls src="${fileUrl}"></audio>
+                    `;
+                    fileListContainer.appendChild(fileDiv);
+                });
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการโหลดไฟล์:", error);
+                fileListContainer.innerHTML = "<p>เกิดข้อผิดพลาดในการโหลดไฟล์</p>";
+            }
+        }
+
+        async function fetchAllUsersAndLoadDropdown() {
+            const userDropdown = document.getElementById("userDropdown");
+            const uniqueUsers = {};
+            const submissionsColRef = collection(db, 'submissions_part1');
+            
+            try {
+                const querySnapshot = await getDocs(submissionsColRef);
+                querySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.uid && data.email && !uniqueUsers[data.uid]) {
+                        uniqueUsers[data.uid] = data.email;
+                    }
+                });
+            } catch (error) {
+                console.error(`Error fetching user list:`, error);
+            }
+
+            for (const uid in uniqueUsers) {
+                const option = document.createElement("option");
+                option.value = uid;
+                option.textContent = uniqueUsers[uid];
+                userDropdown.appendChild(option);
+            }
+
+            userDropdown.addEventListener('change', (e) => {
+                const selectedUserId = e.target.value;
+                if (selectedUserId) {
+                    loadAudioFiles(selectedUserId);
+                }
+            });
+        }
+
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                window.location.href = "login.html";
+                return;
+            }
+            document.getElementById("userNameDisplay").textContent = user.email;
+            await fetchAllUsersAndLoadDropdown();
+            loadAudioFiles(user.uid);
+        });
+    </script>
+</body>
+</html>
