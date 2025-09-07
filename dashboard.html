@@ -38,12 +38,14 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
-        import { getStorage, ref, listAll, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
+        // เปลี่ยนจาก Firestore เป็น Realtime Database
+        import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+        import { getStorage, ref as storageRef, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyA4OrZERUoxWPiShCEWVvz1MK9cYGO3_K8",
             authDomain: "new-record-3ccd6.firebaseapp.com",
+            databaseURL: "https://new-record-3ccd6-default-rtdb.firebaseio.com", // เพิ่ม databaseURL
             projectId: "new-record-3ccd6",
             storageBucket: "new-record-3ccd6.firebasestorage.app",
             messagingSenderId: "1065863160189",
@@ -53,72 +55,89 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
-        const db = getFirestore(app);
+        const db = getDatabase(app); // ใช้ getDatabase แทน getFirestore
         const storage = getStorage(app);
 
+        // ฟังก์ชันสำหรับโหลดไฟล์เสียงจาก Realtime Database
         async function loadAudioFiles(userId) {
             const fileListContainer = document.getElementById("fileListContainer");
             fileListContainer.innerHTML = "<h4>กำลังโหลดรายการไฟล์...</h4>";
 
             try {
-                const userFolderRef = ref(storage, `audios/${userId}`);
-                const fileList = await listAll(userFolderRef);
+                // ดึงข้อมูลจาก Realtime Database ที่ path "audios/userId"
+                const dbRef = ref(db);
+                const snapshot = await get(child(dbRef, `audios/${userId}`));
 
                 fileListContainer.innerHTML = "";
-                if (fileList.items.length === 0) {
+                if (!snapshot.exists()) {
                     fileListContainer.innerHTML = "<p>ไม่พบไฟล์เสียงที่อัปโหลด</p>";
                     return;
                 }
 
-                fileList.items.forEach(async (fileRef) => {
-                    const fileName = fileRef.name;
-                    const fileUrl = await getDownloadURL(fileRef);
+                // วนลูปแสดงผลข้อมูลที่ได้มา
+                const files = snapshot.val();
+                let hasFiles = false;
+                for (const fileName in files) {
+                    const fileData = files[fileName];
+                    const fileUrl = fileData.url; // สมมติว่าข้อมูลใน DB มี field ชื่อ 'url'
+                    
+                    if (fileUrl) {
+                        const fileDiv = document.createElement("div");
+                        fileDiv.className = "file-item";
+                        fileDiv.innerHTML = `
+                            <p><b>${fileName}</b></p>
+                            <audio controls src="${fileUrl}"></audio>
+                        `;
+                        fileListContainer.appendChild(fileDiv);
+                        hasFiles = true;
+                    }
+                }
 
-                    const fileDiv = document.createElement("div");
-                    fileDiv.className = "file-item";
-                    fileDiv.innerHTML = `
-                        <p><b>${fileName}</b></p>
-                        <audio controls src="${fileUrl}"></audio>
-                    `;
-                    fileListContainer.appendChild(fileDiv);
-                });
+                if (!hasFiles) {
+                     fileListContainer.innerHTML = "<p>ไม่พบไฟล์เสียงที่อัปโหลด</p>";
+                }
+
             } catch (error) {
                 console.error("เกิดข้อผิดพลาดในการโหลดไฟล์:", error);
                 fileListContainer.innerHTML = "<p>เกิดข้อผิดพลาดในการโหลดไฟล์</p>";
             }
         }
 
+        // ฟังก์ชันสำหรับดึงผู้ใช้งานทั้งหมดจาก Realtime Database (หรือ Firestore เดิม)
         async function fetchAllUsersAndLoadDropdown() {
-            const userDropdown = document.getElementById("userDropdown");
-            const uniqueUsers = {};
-            const submissionsColRef = collection(db, 'submissions_part1');
-            
-            try {
-                const querySnapshot = await getDocs(submissionsColRef);
-                querySnapshot.forEach(doc => {
-                    const data = doc.data();
-                    if (data.uid && data.email && !uniqueUsers[data.uid]) {
-                        uniqueUsers[data.uid] = data.email;
-                    }
-                });
-            } catch (error) {
-                console.error(`Error fetching user list:`, error);
-            }
+             const userDropdown = document.getElementById("userDropdown");
+             const dbRef = ref(db);
+             const uniqueUsers = {};
 
-            for (const uid in uniqueUsers) {
-                const option = document.createElement("option");
-                option.value = uid;
-                option.textContent = uniqueUsers[uid];
-                userDropdown.appendChild(option);
-            }
+             try {
+                 const snapshot = await get(child(dbRef, 'users')); // สมมติว่ามี collection 'users'
+                 if (snapshot.exists()) {
+                     const users = snapshot.val();
+                     for (const uid in users) {
+                         const email = users[uid].email; // สมมติว่ามี field 'email'
+                         if (email) {
+                             uniqueUsers[uid] = email;
+                         }
+                     }
+                 }
+             } catch (error) {
+                 console.error(`Error fetching user list:`, error);
+             }
 
-            userDropdown.addEventListener('change', (e) => {
-                const selectedUserId = e.target.value;
-                if (selectedUserId) {
-                    loadAudioFiles(selectedUserId);
-                }
-            });
-        }
+             for (const uid in uniqueUsers) {
+                 const option = document.createElement("option");
+                 option.value = uid;
+                 option.textContent = uniqueUsers[uid];
+                 userDropdown.appendChild(option);
+             }
+
+             userDropdown.addEventListener('change', (e) => {
+                 const selectedUserId = e.target.value;
+                 if (selectedUserId) {
+                     loadAudioFiles(selectedUserId);
+                 }
+             });
+         }
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) {
